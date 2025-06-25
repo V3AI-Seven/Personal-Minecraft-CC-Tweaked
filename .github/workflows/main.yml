@@ -1,10 +1,14 @@
-name: Luacheck
+name: CCTweakedCheck
 on: [push, pull_request]
 jobs:
-  luacheck:
+  runCheck:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Luacheck linter
-        uses: lunarmodules/luacheck@v1
+      - name: Install CraftOS-PC
+        run: |
+          $ sudo add-apt-repository ppa:jackmacwindows/ppa
+          $ sudo apt update
+          $ sudo apt install craftos-pc
+      - name: Run Script in CraftOS-PC
+        run: |
+          $ craftos --mount .=.
