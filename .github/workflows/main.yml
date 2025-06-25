@@ -6,9 +6,9 @@ jobs:
     steps:
       - name: Install CraftOS-PC
         run: |
-          $ sudo add-apt-repository ppa:jackmacwindows/ppa
-          $ sudo apt update
-          $ sudo apt install craftos-pc
+          sudo add-apt-repository ppa:jackmacwindows/ppa
+          sudo apt update
+          sudo apt install craftos-pc
       - name: Run Script in CraftOS-PC
         run: |
-          $ craftos --mount .=.
+          craftos --mount .=.
