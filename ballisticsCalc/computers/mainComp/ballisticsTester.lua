@@ -1,4 +1,4 @@
-local ballistis = require("ballisticsMath")
+local ballistics = require("ballisticsMath")
 
 print("Enter cannon height (y0):")
 local y0 = tonumber(io.read())

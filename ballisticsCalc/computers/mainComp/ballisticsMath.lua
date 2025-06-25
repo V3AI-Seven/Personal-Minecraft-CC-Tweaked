@@ -1,217 +1,342 @@
+---
+--- Original creator of formulas: @sashafiesta on Discord
+--- Original creator of python adaptation: @malexy on Discord
+--- Optimized and translated python code to lua: SpaceEye. (https://gist.github.com/SuperSpaceEye/c33443213605d1bf35f81737c9058dc2)
+--- Some lua optimizations: Autist69420
+---
 
-local sin = math.sin
-local cos = math.cos
-local atan = math.atan
-local sqrt = math.sqrt
-local pi = math.pi
-local log = math.log
+-- Simple micro-optimizations for better performance
+local table_insert = table.insert
+local rad, sin, cos, log, abs, min, pow = math.rad, math.sin, math.cos, math.log, math.abs, math.min, math.pow
+local tu = table.unpack
 
-local function radians(deg)
-    return deg * pi / 180
-end
-
-local function myLinspace(startValue, endValue, num)
-    local t = {}
+local function linspace(start, end_, num)
+    local linspaced = {}
+    if num == 0 then return linspaced end
     if num == 1 then
-        t[1] = startValue
-    else
-        local step = (endValue - startValue) / (num - 1)
-        for i = 1, num do
-            t[i] = startValue + (i - 1) * step
-        end
+        table_insert(linspaced, start)
+        return linspaced
     end
-    return t
+
+    local delta = (end_ - start) / (num - 1)
+
+    for i = 0, num-2 do
+        table_insert(linspaced, start+delta*i)
+    end
+    table_insert(linspaced, end_)
+
+    return linspaced
 end
 
-local function timeInAir(y0, y, Vy)
-    -- Find the air time of the projectile, using recursive sequence.
+local function range(start, stop, step)
+    step = step or 1
+    local pos = start
+    return function ()
+        if step > 0 then
+            if pos >= stop then return nil end
+        else
+            if pos <= stop then return nil end
+        end
+        local lpos = pos
+        pos = pos + step
+        return lpos
+        end
+end
+
+local function flinspace(start, stop, num_elements, min, max)
+    local items = linspace(math.max(start, min), math.min(stop, max), num_elements)
+    local pos = 0
+    return function() -- simple iterator
+        pos = pos + 1
+        return items[pos]
+    end
+end
+
+local function get_root(d, from_end)
+    if from_end then
+        for i = #d-1, 1, -1 do
+            if d[i][1] > d[i+1][1] then return d[i+1] end
+        end
+        return d[1]
+    else
+        for i = 2, #d, 1 do
+            if d[i-1][1] < d[i][1] then return d[i-1] end
+        end
+        return d[#d]
+    end
+end
+
+local function time_in_air(y0, y, Vy, gravity, max_steps)
     local t = 0
-    local t_below = 999999999
+    local t_below = 9999999
+
+    gravity = gravity or 0.05
+    max_steps = max_steps or 1000000
 
     if y0 <= y then
-        -- If cannon is lower than a target, simulating the way, up to the targets level
-        while t < 100000 do
+        local y0p
+        while t < max_steps do
+            y0p = y0
             y0 = y0 + Vy
-            Vy = 0.99 * Vy - 0.05
+            Vy = 0.99 * Vy - gravity
             t = t + 1
+
             if y0 > y then
-                t_below = t - 1
+                t_below = t-1
                 break
             end
-            if Vy < 0 then
+
+            if y0 - y0p < 0 then
                 return -1, -1
             end
         end
     end
 
-    while t < 100000 do
+    while t < max_steps do
         y0 = y0 + Vy
-        Vy = 0.99 * Vy - 0.05
+        Vy = 0.99 * Vy - gravity
         t = t + 1
-        if y0 <= y then
-            return t_below, t
+
+        if y0 <= y then return t_below, t end
+    end
+
+    return t_below, -1
+end
+
+local function get_min(array)
+    local min_delta_t = array[1][1]
+    local pitch_ = 0;
+    local airtime_ = 0;
+    for i = 1, #array do
+        if min_delta_t > array[i][1] then
+            min_delta_t  = array[i][1]
+            pitch_ = array[i][2]
+            airtime_ = array[i][3]
         end
     end
-    return -1, -1
+    return min_delta_t, pitch_, airtime_
 end
 
-local function getFirstElement(array)
-    return array[1]
+local function try_pitch(tried_pitch, initial_speed,
+                         length, distance, cannon, target, gravity, max_steps)
+    gravity = gravity or 0.05
+    max_steps = max_steps or 1000000
+
+    local tp_rad = rad(tried_pitch)
+
+    local Vw = cos(tp_rad) * initial_speed
+    local Vy = sin(tp_rad) * initial_speed
+
+    local x_coord_2d = length * cos(tp_rad)
+
+    if Vw == 0 then return nil, false end
+    local part = 1 - (distance - x_coord_2d) / (100 * Vw)
+    if part <= 0 then return nil, false end
+    local horizontal_time_to_target = abs(log(part) / (-0.010050335853501))
+
+    local y_coord_of_end_barrel = cannon[2] + sin(tp_rad) * length
+
+    local t_below, t_above = time_in_air(y_coord_of_end_barrel, target[2], Vy, gravity, max_steps)
+
+    if t_below < 0 then return nil, false end
+
+    local delta_t = min(
+            abs(horizontal_time_to_target - t_below),
+            abs(horizontal_time_to_target - t_above)
+    )
+
+    return {delta_t, tried_pitch, delta_t + horizontal_time_to_target}, true
 end
 
-local function getRoot(tab, sens)
-    if sens == 1 then
-        for i = 2, #tab do
-            if tab[i-1][1] < tab[i][1] then
-                return tab[i-1]
-            end
-        end
-        return tab[#tab]
-    elseif sens == -1 then
-        for i = #tab-1, 1, -1 do
-            if tab[i][1] > tab[i+1][1] then
-                return tab[i+1]
-            end
-        end
-        return tab[1]
+local function try_pitches(iter, ...)
+    local delta_times = {}
+    for pitch in iter do
+        local items, is_successful = try_pitch(pitch, ...)
+        if is_successful then table.insert(delta_times, items) end
     end
+    return delta_times
 end
 
-function BallisticsToTarget(cannon, target, power, direction, lenght)
-    -- Function that calculates the elevation angle to hit the target with a cannon
+-- Required parameters:
+-- cannon = table of three numbers: x, y, z of cannon
+-- target = same as cannon but for target
+-- initial_speed = speed in m/s
+-- length = length of a cannon
+-- Optional parameters:
+-- max_steps = maximum number of steps program will simulate projectile before declaring it unreachable
+-- max_delta_t_error = maximum difference between horizontal and vertical times to target before declaring target impossible to hit. Only matters if check_impossible is enabled
+-- amin = minimum cannon angle
+-- amax = maximum cannon angle
+-- gravity = x m/tick
+-- num_iterations = number of refining steps after roughly calculating angle
+-- num_elements = number of elements to test during refining stage
+-- check_impossible = does additional check for targets that are impossible to hit
+local function calculate_pitch(cannon, target, initial_speed, length,
+                               optional)
+    local max_steps, max_delta_t_error, amin, amax, gravity, num_iterations, num_elements, check_impossible
+    optional = optional or {}
+    max_steps = optional.max_steps or optional[1] or 100000
+    max_delta_t_error = optional.max_delta_t_error or optional[2] or 1
+    amin = optional.amin or optional[3] or -30
+    amax = optional.amax or optional[4] or 60
+    gravity = optional.gravity or optional[5] or 0.05
+    num_iterations = optional.num_iterations or optional[6] or 5
+    num_elements = optional.num_elements or optional[7] or 20
+    check_impossible = (optional.check_impossible ~= false) and (optional[8] ~= false)
 
-    local Dx = cannon[1] - target[1]
-    local Dz = cannon[3] - target[3]
-    local distance = sqrt(Dx * Dx + Dz * Dz)
-    local initialSpeed = power * 2
-    local nbOfIterations = 5
+    local Dx, Dz = cannon[1] - target[1], cannon[3] - target[3]
+    local distance = math.sqrt(Dx * Dx + Dz * Dz)
 
+    local delta_times = try_pitches(range(amax, amin-1, -1), initial_speed, length, distance, cannon, target, gravity, max_steps)
+    if #delta_times == 0 then return {-1, -1, -1}, {-1, -1, -1} end
+
+    local dT1, p1, at1 = tu(get_root(delta_times, false))
+    local dT2, p2, at2 = tu(get_root(delta_times, true))
+
+    local c1 = true
+    local c2 = not (p1 == p2)
+    local same_res = p1 == p2
+
+    local dTs1, dTs2
+
+    for i in range(0, num_iterations) do
+        if c1 then dTs1 = try_pitches(flinspace(p1-pow(10,-i), p1+pow(10,-i), num_elements, amin, amax), initial_speed, length, distance, cannon, target, gravity, max_steps) end
+        if c2 then dTs2 = try_pitches(flinspace(p2-pow(10,-i), p2+pow(10,-i), num_elements, amin, amax), initial_speed, length, distance, cannon, target, gravity, max_steps) end
+
+        if c1 and #dTs1 == 0 then c1=false end
+        if c2 and #dTs2 == 0 then c2=false end
+
+        if not c1 and not c2 then return {-1, -1, -1}, {-1, -1, -1} end
+
+        if c1 then dT1, p1, at1 = get_min(dTs1) end
+        if c2 then dT2, p2, at2 = get_min(dTs2) end
+    end
+
+    if same_res then dT2, p2, at2 = dT1, p1, at1 end
+
+    local r1, r2 = {dT1, p1, at1}, {dT2, p2, at2}
+    if check_impossible and dT1 > max_delta_t_error then r1 = {-1, -1, -1} end
+    if check_impossible and dT2 > max_delta_t_error then r2 = {-1, -1, -1} end
+
+    return r1, r2
+end
+
+local function calculate_yaw(Dx, Dz, direction)
     local yaw
     if Dx ~= 0 then
-        yaw = atan(Dz / Dx) * 180 / pi
+        yaw = math.atan(Dz/Dx) * 180/math.pi
     else
         yaw = 90
     end
+
     if Dx >= 0 then
         yaw = yaw + 180
     end
 
-    local function tryAllAngles(low, high, nbOfElements)
-        local deltaTimes = {}
-        for _, triedPitch in ipairs(myLinspace(low, high, nbOfElements)) do
-            local triedPitchRad = radians(triedPitch)
-            local Vw = cos(triedPitchRad) * initialSpeed
-            local Vy = sin(triedPitchRad) * initialSpeed
-            local xCoord_2d = lenght * cos(triedPitchRad)
-            local ok, timeToTarget = pcall(function()
-                return math.abs(
-                    log(1 - (distance - xCoord_2d) / (100 * Vw)) / (-0.010050335853501)
-                )
-            end)
-            if not ok or not timeToTarget or timeToTarget ~= timeToTarget then
-                -- skip if math error or nan
-            else
-                local yCoordOfEndBarrel = cannon[2] + sin(triedPitchRad) * lenght
-                local t_below, t_above = timeInAir(yCoordOfEndBarrel, target[2], Vy)
-                if t_below < 0 then
-                    -- skip
-                else
-                    local deltaT = math.min(
-                        math.abs(timeToTarget - t_below),
-                        math.abs(timeToTarget - t_above)
-                    )
-                    table.insert(deltaTimes, {deltaT, triedPitch, deltaT + timeToTarget})
-                end
-            end
-        end
-        if #deltaTimes == 0 then
-            error("The target is unreachable with your current canon configuration !")
-        end
-        local dt1, p1, ta1 = table.unpack(getRoot(deltaTimes, 1))
-        local dt2, p2, ta2 = table.unpack(getRoot(deltaTimes, -1))
-        return {dt1, p1, ta1}, {dt2, p2, ta2}
-    end
-
-    local function tryAllAnglesUnique(low, high, nbOfElements)
-        local deltaTimes = {}
-        for _, triedPitch in ipairs(myLinspace(low, high, nbOfElements)) do
-            local triedPitchRad = radians(triedPitch)
-            local Vw = cos(triedPitchRad) * initialSpeed
-            local Vy = sin(triedPitchRad) * initialSpeed
-            local xCoord_2d = lenght * cos(triedPitchRad)
-            local ok, timeToTarget = pcall(function()
-                return math.abs(
-                    log(1 - (distance - xCoord_2d) / (100 * Vw)) / (-0.010050335853501)
-                )
-            end)
-            if not ok or not timeToTarget or timeToTarget ~= timeToTarget then
-                -- skip if math error or nan
-            else
-                local yCoordOfEndBarrel = cannon[2] + sin(triedPitchRad) * lenght
-                local t_below, t_above = timeInAir(yCoordOfEndBarrel, target[2], Vy)
-                if t_below < 0 then
-                    -- skip
-                else
-                    local deltaT = math.min(
-                        math.abs(timeToTarget - t_below),
-                        math.abs(timeToTarget - t_above)
-                    )
-                    table.insert(deltaTimes, {deltaT, triedPitch, deltaT + timeToTarget})
-                end
-            end
-        end
-        if #deltaTimes == 0 then
-            error("The target is unreachable with your current canon configuration !")
-        end
-        table.sort(deltaTimes, function(a, b) return a[1] < b[1] end)
-        local dt, p, ta = table.unpack(deltaTimes[1])
-        return dt, p, ta
-    end
-
-    local t1, t2 = tryAllAngles(-30, 60, 91)
-    local deltaTime1, pitch1, airtime1 = t1[1], t1[2], t1[3]
-    local deltaTime2, pitch2, airtime2 = t2[1], t2[2], t2[3]
-
-    for i = 0, nbOfIterations - 1 do
-        deltaTime1, pitch1, airtime1 = tryAllAnglesUnique(pitch1 - 10^(-i), pitch1 + 10^(-i), 21)
-        deltaTime2, pitch2, airtime2 = tryAllAnglesUnique(pitch2 - 10^(-i), pitch2 + 10^(-i), 21)
-    end
-
-    if pitch1 > 60.5 then
-        pitch1 = "Over 60"
-    elseif pitch1 < -29.5 then
-        pitch1 = "Under -30"
-    end
-
-    if pitch2 > 60.5 then
-        pitch2 = "Over 60"
-    elseif pitch2 < -29.5 then
-        pitch2 = "Under -30"
-    end
-
-    local airtimeSeconds1 = airtime1 / 20
-    local airtimeSeconds2 = airtime2 / 20
-
-    if direction == "north" then
-        yaw = (yaw + 90) % 360
-    elseif direction == "west" then
-        yaw = (yaw + 180) % 360
-    elseif direction == "south" then
-        yaw = (yaw + 270) % 360
-    elseif direction ~= "east" then
-        return "Invalid direction"
-    end
-
-    local fuzeTime1 = math.floor(airtime1 + (deltaTime1 / 2) - 10)
-    local fuzeTime2 = math.floor(airtime2 + (deltaTime2 / 2) - 10)
-
-    local precision1 = math.floor((1 - deltaTime1 / airtime1) * 100)
-    local precision2 = math.floor((1 - deltaTime2 / airtime2) * 100)
-
-    return {
-        {yaw, pitch1, airtime1, math.floor(airtimeSeconds1*100)/100, fuzeTime1, precision1},
-        {yaw, pitch2, airtime2, math.floor(airtimeSeconds2*100)/100, fuzeTime2, precision2}
-    }
+    local dirs = {90, 180, 270, 0}
+    return (yaw + dirs[direction]) % 360
 end
 
--- CREDITS OF ORIGINAL FORMULAS : @sashafiesta#1978 on Discord
+local function ballistics_to_target(cannon, target, power, direction, R1, R2, length)
+    local directions = {north=1, west=2, south=3, east=4}
+    direction = directions[direction]
+    if direction == nil then error("Invalid direction") end
+
+    local Dx, Dz = cannon[1] - target[1], cannon[3] - target[3]
+
+    local r1, r2 = calculate_pitch(cannon, target, power, length)
+    local yaw = calculate_yaw(Dx, Dz, direction)
+
+    local rt = {}
+    rt.yaw = yaw
+    rt.yaw_time = yaw * 20 / (0.75 * R1)
+
+    for k, v in pairs({[1]=r1, [2]=r2}) do
+        local t = {pitch=-1, pitch_time=-1, airtime=-1, fuze_time=-1}
+        if v[1] ~= -1 then
+            t.delta_t = v[1]
+            t.pitch = v[2]
+            t.airtime = v[3]
+            t.pitch_time = t.pitch * 20 / (0.75 * R2)
+            t.precision = 1 - t.delta_t / t.airtime
+        end
+        table.insert(rt, k, t)
+    end
+
+    return rt
+end
+
+print("For the cannon coordinates, please input the coordinates of the cannon mount.")
+
+cannonCoord = {}
+print("x coord of cannon : ")
+table_insert(cannonCoord, tonumber(io.read()))
+print("y coord of cannon : ")
+table_insert(cannonCoord, tonumber(io.read())+2)
+print("z coord of cannon : ")
+table_insert(cannonCoord, tonumber(io.read()))
+
+
+targetCoord = {}
+print("x coord of target : ")
+table_insert(targetCoord, tonumber(io.read()))
+print("y coord of target : ")
+table_insert(targetCoord, tonumber(io.read()))
+print("z coord of target : ")
+table_insert(targetCoord, tonumber(io.read()))
+
+print("Number of powder charges (int) : ")
+powderCharges = tonumber(io.read())
+
+print("What is the standart direction of the cannon ? (north, south, east, west)")
+directionOfCannon = io.read()
+
+print("What is the RPM of the yaw axis ?")
+yawRPM = tonumber(io.read())
+print("What is the RPM of the pitch axis ?")
+pitchRPM = tonumber(io.read())
+
+print("What is the length of the cannon ? (From the block held by the mount to the tip of the cannon, the held block excluded) ")
+cannonLength = tonumber(io.read())
+
+-- local cannonCoord = {323, 73+2, 32}
+-- local targetCoord = {350, 84, -113}
+-- local powderCharges = 8
+-- local directionOfCannon = "north"
+-- local yawRPM = 1
+-- local pitchRPM = 1
+-- local cannonLength = 31
+
+
+local rt = ballistics_to_target(
+    cannonCoord,
+    targetCoord,
+    powderCharges,
+    directionOfCannon,
+    yawRPM,
+    pitchRPM,
+    cannonLength
+)
+
+print("Yaw is ", rt.yaw)
+print("With the yaw axis set at ", yawRPM, " rpm, the cannon must take ", rt.yaw_time, " ticks of turning the yaw axis.")
+
+if rt[1].pitch ~= -1 then
+    print("\nHigh shot:")
+    print("Pitch is ", rt[1].pitch)
+    print("Airtime is", rt[1].airtime, "ticks")
+    print("With the pitch axis set at ", pitchRPM, " rpm, the cannon must take ", rt[1].pitch_time, " ticks of turning the pitch axis.")
+    print("Precision: ", rt[1].precision)
+else
+    print("\nHigh shot is impossible")
+end
+
+if rt[2].pitch ~= -1 then
+    print("\nLow shot:")
+    print("Pitch is ", rt[2].pitch)
+    print("Airtime is", rt[2].airtime, "ticks")
+    print("With the pitch axis set at ", pitchRPM, " rpm, the cannon must take ", rt[2].pitch_time, " ticks of turning the pitch axis.")
+    print("Precision: ", rt[2].precision)
+else
+    print("\nLow shot is impossible")
+end
