@@ -1,4 +1,4 @@
-local ballistics = require("ballisticsMath.lua")
+local ballistics = require("ballisticsMath")
 
 cannonCoord = {}
 print("x coord of cannon : ")
