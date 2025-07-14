@@ -9,9 +9,35 @@
 
 local function ballistics(cannonData)
 
-    local pitchController = peripheral.wrap("back")
-    local yawController = peripheral.wrap("top")
+    local cannonInterface = peripheral.wrap("blockReader_0")
+    local pitchInterface = peripheral.wrap("top")
+    local yawInterface = peripheral.wrap("back")
 
+    local cannonAngleData = {}
+
+    pitchInterface.setTargetSpeed(0)
+    yawInterface.setTargetSpeed(0)
+
+    local function pitchControl(targetPitch)
+        cannonAngleData.pitch = cannonInterface.getBlockData().CannonPitch
+        while targetPitch - cannonAngleData.pitch > 0.1 or targetPitch - cannonAngleData.pitch < -0.1 do
+            cannonAngleData.pitch = cannonInterface.getBlockData().CannonPitch
+            print("Speed: " .. (5 * (targetPitch - cannonAngleData.pitch)) * -1)
+            pitchInterface.setTargetSpeed((5 * (targetPitch - cannonAngleData.pitch)) * -1)
+            sleep()
+        end
+        pitchInterface.setTargetSpeed(0)
+    end
+    local function yawControl(targetYaw)
+        cannonAngleData.yaw = cannonInterface.getBlockData().CannonYaw
+        while targetYaw - cannonAngleData.yaw > 0.1 or targetYaw - cannonAngleData.yaw < -0.1 do
+            cannonAngleData.yaw = cannonInterface.getBlockData().CannonYaw
+            print("Speed: " .. (5 * (targetYaw - cannonAngleData.yaw)) * -1)
+            yawInterface.setTargetSpeed((5*(targetYaw-cannonAngleData.yaw))*-1)
+            sleep()
+        end
+        yawInterface.setTargetSpeed(0)
+    end
 
     local table_insert = table.insert
     local rad, sin, cos, log, abs, min, pow = math.rad, math.sin, math.cos, math.log, math.abs, math.min, math.pow
@@ -296,31 +322,35 @@ local function ballistics(cannonData)
     )
 
     print("Yaw is ", rt.yaw)
-    yawController.rotate(rt.yaw,-1)
+    yawControl(rt.yaw)
 
-    if rt[1].pitch ~= -1 then
+    local highShot = true
+
+    if rt[1].pitch ~= -1 and highShot == true then
         print("\nHigh shot:")
         print("Pitch is ", rt[1].pitch)
         print("Airtime is", rt[1].airtime, "ticks")
         --print("With the pitch axis set at ", cannonData.pitchRPM, " rpm, the cannon must take ", rt[1].pitch_time, " ticks of turning the pitch axis.")
         print("Precision: ", rt[1].precision)
-        pitchController.rotate(rt[1].pitch, 1)
+        pitchControl(math.floor(rt[1].pitch+0.5))
 
         
         
     elseif rt[2].pitch ~= -1 then
-        print("\nHigh shot is impossible")
+        print("\nHigh shot is impossible or disabled")
         print("\nLow shot:")
         print("Pitch is ", rt[2].pitch)
         print("Airtime is", rt[2].airtime, "ticks")
         --print("With the pitch axis set at ", cannonData.pitchRPM, " rpm, the cannon must take ", rt[2].pitch_time, " ticks of turning the pitch axis.")
         print("Precision: ", rt[2].precision)
 
-        pitchController.rotate(rt[2].pitch, 1)
+        pitchControl(math.floor(rt[2].pitch+0.5))
     else
         print("\nAll Shots are impossible")
     end
 end
+
+
 --[[
 print("For the cannon coordinates, please input the coordinates of the cannon mount.")
 
@@ -397,6 +427,5 @@ else
     print("\nLow shot is impossible")
 end
 ]]--
-
 
 return {ballistics = ballistics}
