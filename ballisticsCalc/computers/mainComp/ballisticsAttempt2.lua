@@ -3,6 +3,7 @@ function ballistics(cannon, power, direction, length_, target)
     local cannonInterface = peripheral.wrap("blockReader_0")
     local pitchInterface = peripheral.wrap("top")
     local yawInterface = peripheral.wrap("back")
+    local modem = peripheral.find("modem") or error("No modem found")
 
     local speedCap = 64
 
@@ -53,6 +54,7 @@ function ballistics(cannon, power, direction, length_, target)
     -- Helper error for out-of-range
     local function OutOfRangeException(msg)
         error(msg or "Out of Range")
+        modem.transmit(6505, 6505, "fireFailed")
     end
 
     -- Equivalent to numpy.linspace
@@ -315,6 +317,7 @@ function ballistics(cannon, power, direction, length_, target)
         redstone.setOutput("bottom", true)
         sleep(0.1)
         redstone.setOutput("bottom", false)
+        modem.transmit(6505, 6505, "fireConfirm")
     
     elseif ballisticsData[2][6] <= ballisticsData[1][6] and shot2 == "valid" then -- shot 2 will be used
         print("Using shot 2")
@@ -331,9 +334,11 @@ function ballistics(cannon, power, direction, length_, target)
         redstone.setOutput("bottom", true)
         sleep(0.1)
         redstone.setOutput("bottom", false)
+        modem.transmit(6505, 6505, "fireConfirm")
 
     else
         print("No valid shots found. Input another target")
+        modem.transmit(6505, 6505, "noValidShots")
     end
 
 end

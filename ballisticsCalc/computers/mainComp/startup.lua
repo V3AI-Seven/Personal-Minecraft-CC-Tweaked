@@ -12,8 +12,8 @@ while true do
     until channel == 6505
     if type(message) == "table" and message[1] == "lock+fire" and channel == 6505 then
         target = {x = message[2], y = message[3], z = message[4]}
-        modem.transmit(replyChannel, 6505, "fireReqConfirm")
+        modem.transmit(6505, 6505, "fireReqConfirm")
         ballisticsFile.ballistics(cannonPos, 4, "south", 6, target)
-        modem.transmit(replyChannel, 6505, "fireConfirm")
+        
     end
 end
