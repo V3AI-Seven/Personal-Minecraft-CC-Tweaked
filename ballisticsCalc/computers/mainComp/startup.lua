@@ -11,7 +11,7 @@ while true do
         event, side, channel, replyChannel, message, distance = os.pullEvent("modem_message")
     until channel == 6505
     if type(message) == "table" and message[1] == "lock+fire" and channel == 6505 then
-        target = {x = message[2], y = message[3], z = message[4]}
+        target = {x = math.floor(message[2]), y = math.floor(message[3]), z = math.floor(message[4])}
         modem.transmit(6505, 6505, "fireReqConfirm")
         ballisticsFile.ballistics(cannonPos, 4, "south", 6, target)
         

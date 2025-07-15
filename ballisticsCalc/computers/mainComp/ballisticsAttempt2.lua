@@ -6,6 +6,8 @@ function ballistics(cannon, power, direction, length_, target)
     local modem = peripheral.find("modem") or error("No modem found")
 
     local speedCap = 64
+    local minSpeed = 1
+    local aimTolerance = 0.5
 
     local cannonAngleData = {}
 
@@ -14,7 +16,7 @@ function ballistics(cannon, power, direction, length_, target)
 
     local function pitchControl(targetPitch)
         cannonAngleData.pitch = cannonInterface.getBlockData().CannonPitch
-        while targetPitch - cannonAngleData.pitch > 0.1 or targetPitch - cannonAngleData.pitch < -0.1 do
+        while targetPitch - cannonAngleData.pitch > aimTolerance or targetPitch - cannonAngleData.pitch < -aimTolerance do
             cannonAngleData.pitch = cannonInterface.getBlockData().CannonPitch
             local targetSpeed = (10 * (targetPitch - cannonAngleData.pitch)) * -1
 
@@ -23,8 +25,17 @@ function ballistics(cannon, power, direction, length_, target)
             elseif targetSpeed < -speedCap then
                 targetSpeed = -speedCap
             end
+            
+            -- Ensure speed doesn't drop below minSpeed
+            if targetSpeed > 0 and targetSpeed < minSpeed then
+                targetSpeed = minSpeed
+            elseif targetSpeed < 0 and targetSpeed > -minSpeed then
+                targetSpeed = -minSpeed
+            end
 
-            --print("Speed: " .. targetSpeed)
+
+
+            print("Speed: " .. targetSpeed)
             pitchInterface.setTargetSpeed(targetSpeed)
             sleep()
         end
@@ -32,7 +43,7 @@ function ballistics(cannon, power, direction, length_, target)
     end
     local function yawControl(targetYaw)
         cannonAngleData.yaw = cannonInterface.getBlockData().CannonYaw
-        while targetYaw - cannonAngleData.yaw > 0.1 or targetYaw - cannonAngleData.yaw < -0.1 do
+        while targetYaw - cannonAngleData.yaw > aimTolerance or targetYaw - cannonAngleData.yaw < -aimTolerance do
             cannonAngleData.yaw = cannonInterface.getBlockData().CannonYaw
             local targetSpeed = (10 * (targetYaw - cannonAngleData.yaw)) * -1
 
@@ -42,7 +53,16 @@ function ballistics(cannon, power, direction, length_, target)
                 targetSpeed = -speedCap
             end
             
-            --print("Speed: " .. targetSpeed)
+            -- Ensure speed doesn't drop below minSpeed
+            if targetSpeed > 0 and targetSpeed < minSpeed then
+                targetSpeed = minSpeed
+            elseif targetSpeed < 0 and targetSpeed > -minSpeed then
+                targetSpeed = -minSpeed
+            end
+            
+
+
+            print("Speed: " .. targetSpeed)
             yawInterface.setTargetSpeed(targetSpeed)
             sleep()
         end
@@ -53,7 +73,7 @@ function ballistics(cannon, power, direction, length_, target)
 
     -- Helper error for out-of-range
     local function OutOfRangeException(msg)
-        error(msg or "Out of Range")
+        print(msg or "Out of Range")
         modem.transmit(6505, 6505, "fireFailed")
     end
 
@@ -288,57 +308,39 @@ function ballistics(cannon, power, direction, length_, target)
 
 
     local ballisticsData = BallisticsToTarget(cannonPos, targetPos, power, direction, length_)
-    local shot1 = "valid"
-    local shot2 = "valid"
+    local validShots = {}
 
-    if ballisticsData[1][2] ~= "Over 60" and ballisticsData[1][2] ~= "Under -30" then
-        shot1 = "valid"
-    else
-        shot1 = "invalid"
-    end
-    if ballisticsData[2][2] ~= "Over 60" and ballisticsData[2][2] ~= "Under -30" then
-        shot2 = "valid"
-    else
-        shot2 = "invalid"
+    for i = 1, 2 do
+        local pitch = ballisticsData[i][2]
+        if pitch ~= "Over 60" and pitch ~= "Under -30" then
+            table.insert(validShots, {index = i, precision = ballisticsData[i][6]})
+        end
     end
 
-    if ballisticsData[1][6] < ballisticsData[2][6] and shot1 == "valid" then -- shot 1 will be used
-        print("Using shot 1")
-        print("Yaw: " .. ballisticsData[1][1])
-        print("Pitch: " .. ballisticsData[1][2])
-        print("Airtime: " .. ballisticsData[1][3])
-        print("Prescision: " .. ballisticsData[1][6] .. "%")
-
-        pitchControl(ballisticsData[1][2])
-        yawControl(ballisticsData[1][1])
-        sleep(0.5)
-        print("Firing")
-
-        redstone.setOutput("bottom", true)
-        sleep(0.1)
-        redstone.setOutput("bottom", false)
-        modem.transmit(6505, 6505, "fireConfirm")
-    
-    elseif ballisticsData[2][6] <= ballisticsData[1][6] and shot2 == "valid" then -- shot 2 will be used
-        print("Using shot 2")
-        print("Yaw: " .. ballisticsData[2][1])
-        print("Pitch: " .. ballisticsData[2][2])
-        print("Airtime: " .. ballisticsData[2][3])
-        print("Prescision: " .. ballisticsData[2][6] .. "%")
-
-        pitchControl(ballisticsData[2][2])
-        yawControl(ballisticsData[2][1])
-        sleep(0.5)
-        print("Firing")
-
-        redstone.setOutput("bottom", true)
-        sleep(0.1)
-        redstone.setOutput("bottom", false)
-        modem.transmit(6505, 6505, "fireConfirm")
-
-    else
+    if #validShots == 0 then
         print("No valid shots found. Input another target")
         modem.transmit(6505, 6505, "noValidShots")
+    else
+        -- Find the shot with the highest precision
+        table.sort(validShots, function(a, b) return a.precision > b.precision end)
+        local bestShotIndex = validShots[1].index
+        local shot = ballisticsData[bestShotIndex]
+
+        print("Using shot " .. bestShotIndex)
+        print("Yaw: " .. shot[1])
+        print("Pitch: " .. shot[2])
+        print("Airtime: " .. shot[3])
+        print("Prescision: " .. shot[6] .. "%")
+
+        pitchControl(shot[2])
+        yawControl(shot[1])
+        sleep(0.5)
+        print("Firing")
+
+        redstone.setOutput("bottom", true)
+        sleep(0.1)
+        redstone.setOutput("bottom", false)
+        modem.transmit(6505, 6505, "fireConfirm")
     end
 
 end
