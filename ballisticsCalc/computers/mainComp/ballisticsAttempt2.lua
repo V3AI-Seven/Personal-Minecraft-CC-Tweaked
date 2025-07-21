@@ -1,13 +1,13 @@
 function ballistics(cannon, power, direction, length_, target)
 
-    local cannonInterface = peripheral.wrap("blockReader_0")
+    local cannonInterface = peripheral.wrap("blockReader_1")
     local pitchInterface = peripheral.wrap("top")
     local yawInterface = peripheral.wrap("back")
     local modem = peripheral.find("modem") or error("No modem found")
 
     local speedCap = 64
     local minSpeed = 1
-    local aimTolerance = 0.5
+    local aimTolerance = 0.1
 
     local cannonAngleData = {}
 
@@ -35,7 +35,7 @@ function ballistics(cannon, power, direction, length_, target)
 
 
 
-            print("Speed: " .. targetSpeed)
+            --print("Speed: " .. targetSpeed)
             pitchInterface.setTargetSpeed(targetSpeed)
             sleep()
         end
@@ -62,7 +62,7 @@ function ballistics(cannon, power, direction, length_, target)
             
 
 
-            print("Speed: " .. targetSpeed)
+            --print("Speed: " .. targetSpeed)
             yawInterface.setTargetSpeed(targetSpeed)
             sleep()
         end
@@ -180,7 +180,7 @@ function ballistics(cannon, power, direction, length_, target)
                 timeToTarget = math.abs(math.log(expr) / (-0.010050335853501))
 
                 local yCoordOfEndBarrel = cannon[2] + math.sin(triedPitchRad) * length_
-                local t_below, t_above = timeInAir(yCoordOfEndBarrel, target.x, Vy)
+                local t_below, t_above = timeInAir(yCoordOfEndBarrel, target.y, Vy)
                 if t_below < 0 then goto continue end
 
                 local deltaT = math.min(
@@ -193,6 +193,7 @@ function ballistics(cannon, power, direction, length_, target)
             end
             if #deltaTimes == 0 then
                 OutOfRangeException("The target is unreachable with your current cannon configuration!")
+                return
             end
 
             local root1 = getRoot(deltaTimes, 1)
